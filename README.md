@@ -55,6 +55,8 @@ be retained without the other.
 
 ```console
 pip install -e .
+pip install "notebooklm-py[browser]"   # needed once for `notebooklm login`
+playwright install chromium            # browser used by the login flow
 notebooklm login
 notebooklm auth check --test     # expect "status": "ok"
 ```
