@@ -76,13 +76,18 @@ class NotebookLMBackend:
     """Real backend. Use as ``async with NotebookLMBackend(...) as backend``."""
 
     def __init__(self, profile: str | None = None, backend: str | None = None,
-                 chat_timeout: float | None = None) -> None:
+                 chat_timeout: float | None = None, client=None) -> None:
         self._profile = profile
         self._backend_name = backend
         self._chat_timeout = chat_timeout
-        self._client = None
+        # Injected client (tests / embedding). When None, __aenter__ opens a
+        # real NotebookLMClient from local storage.
+        self._client = client
+        self._owns_client = client is None
 
     async def __aenter__(self) -> "NotebookLMBackend":
+        if not self._owns_client:
+            return self
         try:
             from notebooklm import NotebookLMClient
         except ImportError as exc:
@@ -106,7 +111,7 @@ class NotebookLMBackend:
         return self
 
     async def __aexit__(self, *exc_info) -> None:
-        if self._client is not None:
+        if self._owns_client and self._client is not None:
             await self._ctx.__aexit__(*exc_info)
             self._client = None
 
@@ -132,14 +137,19 @@ class NotebookLMBackend:
             ready = await self._client.sources.wait_until_ready(
                 notebook_id, source.id, timeout=timeout
             )
-            status = getattr(ready, "status", None)
-            if status is not None and status is not SourceStatus.READY:
+            raw_status = getattr(ready, "status", None)
+            if raw_status is not None and raw_status is not SourceStatus.READY:
                 raise VidchatIngestError(
-                    f"Video source finished with status {status!r} instead of READY. "
+                    f"Video source finished with status {raw_status!r} instead of READY. "
                     "The video may lack an accessible transcript or be age/restricted. "
                     f"(source_id={source.id})"
                 )
-            return SourceInfo(id=source.id, title=getattr(ready, "title", "") or getattr(source, "title", ""))
+            status_name = getattr(raw_status, "name", None) or str(raw_status or "READY")
+            return SourceInfo(
+                id=source.id,
+                title=getattr(ready, "title", "") or getattr(source, "title", ""),
+                status=status_name,
+            )
         except (VidchatIngestError, VidchatIngestTimeout):
             raise
         except Exception as exc:

@@ -122,3 +122,83 @@ def test_fake_backend_rejects_bad_video():
             raise AssertionError("expected VidchatIngestError")
 
     asyncio.run(go())
+
+
+class _StubSources:
+    """Mimics the real client's sources namespace (SimpleNamespace shaped
+    like notebooklm.types.Source, with a real SourceStatus enum member)."""
+
+    def __init__(self, status):
+        self._status = status
+
+    async def add_url(self, notebook_id, url, wait=False):
+        from types import SimpleNamespace
+
+        assert wait is False
+        return SimpleNamespace(id="src-1", title="Pending", status=None)
+
+    async def wait_until_ready(self, notebook_id, source_id, timeout=120.0):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id=source_id, title="Real video title", status=self._status)
+
+
+class _StubNotebooks:
+    async def create(self, title):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(id="nb-9", title=title)
+
+    async def delete(self, notebook_id):
+        return None
+
+
+class _StubChat:
+    async def ask(self, notebook_id, question):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(answer="stub answer", conversation_id="conv-1")
+
+
+class _StubClient:
+    def __init__(self, status):
+        from vidchat.notebook import NotebookLMBackend  # noqa: F401  (import check)
+
+        self.notebooks = _StubNotebooks()
+        self.sources = _StubSources(status)
+        self.chat = _StubChat()
+
+
+def test_real_backend_ingest_ready_builds_source_info():
+    """Regression test for: SourceInfo() missing 'status' on every success."""
+    from notebooklm import SourceStatus
+
+    from vidchat.notebook import NotebookLMBackend
+
+    async def go():
+        async with NotebookLMBackend(client=_StubClient(SourceStatus.READY)) as backend:
+            info = await backend.add_youtube_source("nb-9", "https://www.youtube.com/watch?v=x", 5)
+            assert info.id == "src-1"
+            assert info.title == "Real video title"
+            assert info.status == "READY"
+            answer = await backend.ask("nb-9", "q?")
+            assert answer.text == "stub answer"
+            await backend.delete_notebook("nb-9")  # must not raise
+
+    asyncio.run(go())
+
+
+def test_real_backend_ingest_error_status_raises():
+    from notebooklm import SourceStatus
+
+    from vidchat.notebook import NotebookLMBackend
+
+    async def go():
+        async with NotebookLMBackend(client=_StubClient(SourceStatus.ERROR)) as backend:
+            try:
+                await backend.add_youtube_source("nb-9", "https://www.youtube.com/watch?v=x", 5)
+            except VidchatIngestError:
+                return
+            raise AssertionError("expected VidchatIngestError")
+
+    asyncio.run(go())
