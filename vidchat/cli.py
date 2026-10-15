@@ -20,6 +20,15 @@ from vidchat.notebook import (
     temp_notebook_title,
 )
 from vidchat.prompts import SUMMARY_PROMPT
+from vidchat.style import (
+    banner,
+    error_text,
+    glow,
+    hint_text,
+    prompt_text,
+    setup_readline,
+    warn_text,
+)
 from vidchat.store import (
     DEFAULT_RESEARCH_DIR,
     Session,
@@ -35,8 +44,10 @@ from vidchat.store import (
 
 ADMIN_COMMANDS = ("list", "show", "delete-notebook")
 
+REPL_COMMANDS = ("ask", "summary", "save", "keep", "delete", "quit", "help")
+
 HELP_TEXT = """\
-Commands (type at the vidchat> prompt):
+Commands (type at the you › prompt):
   <question>       Ask a follow-up grounded in the video source
   ask <question>   Same as above
   summary          Redisplay the strategy summary
@@ -45,6 +56,7 @@ Commands (type at the vidchat> prompt):
   delete           Delete the temporary remote notebook, then exit
   quit             Exit via the retention prompt (never silent)
   help             Show this help
+  (Arrow keys edit the line, Up recalls history, Tab completes commands.)
 """
 
 
@@ -169,7 +181,7 @@ async def repl_loop(backend, session: Session, args) -> str:
     print("\n" + HELP_TEXT)
     while True:
         try:
-            line = input("vidchat> ")
+            line = input(prompt_text())
         except EOFError:
             print()
             break
@@ -183,8 +195,8 @@ async def repl_loop(backend, session: Session, args) -> str:
             print(HELP_TEXT)
             continue
         if command == "summary":
-            print("\n# Strategy summary\n")
-            print(session.summary)
+            print(banner("\n# Strategy summary\n"))
+            print(glow(session.summary))
             continue
         if command == "save":
             path = save_session(session, args.research_dir)
@@ -216,12 +228,12 @@ async def repl_loop(backend, session: Session, args) -> str:
                       "Use 'quit' to exit via the retention prompt.")
                 continue
             try:
-                print("Thinking…", flush=True)
+                print(hint_text("Thinking…"), flush=True)
                 answer = await backend.ask(notebook_id, argument)
             except VidchatError as exc:
-                print(f"Question failed: {exc}")
+                print(error_text(f"Question failed: {exc}"))
                 continue
-            print(f"\n{answer.text}\n")
+            print(f"\n{glow(answer.text)}\n")
             session.turns.append(Turn(question=argument, answer=answer.text))
             continue
 
@@ -277,10 +289,10 @@ async def apply_final_decision(backend, session: Session, decision: str, args) -
 async def run_chat(args) -> int:
     url = args.url
     if not (url.startswith("http://") or url.startswith("https://")):
-        print(f"Error: {url!r} is not a URL. Usage: vidchat \"https://www.youtube.com/watch?v=...\"")
+        print(error_text(f"Error: {url!r} is not a URL. Usage: vidchat \"https://www.youtube.com/watch?v=...\""))
         return 2
     if not looks_like_youtube(url):
-        print("Warning: this does not look like a YouTube URL; import will be attempted anyway.")
+        print(warn_text("Warning: this does not look like a YouTube URL; import will be attempted anyway."))
 
     if args.on_exit == "prompt" and not sys.stdin.isatty() and not args.demo:
         print("Error: no interactive input available; pass --on-exit keep|archive|delete|leave for scripting.")
@@ -294,6 +306,9 @@ async def run_chat(args) -> int:
         created_at=utcnow_iso(),
     )
     research_dir = ensure_research_dir(args.research_dir)
+    # Arrow-key editing, Up-history, and Tab completion for the REPL input.
+    # History persists next to the archive; no-op where readline is missing.
+    setup_readline(research_dir / "history", REPL_COMMANDS)
     title = args.notebook_title or temp_notebook_title(url)
 
     backend: NotebookLMBackend | FakeBackend
@@ -311,10 +326,10 @@ async def run_chat(args) -> int:
                 print(f"Creating temporary notebook {title!r}…")
                 nb = await backend.create_notebook(title)
             except VidchatAuthError as exc:
-                print(f"Authentication failed: {exc}")
+                print(error_text(f"Authentication failed: {exc}"))
                 return 2
             except VidchatError as exc:
-                print(f"Could not create notebook: {exc}")
+                print(error_text(f"Could not create notebook: {exc}"))
                 return 1
             notebook_id = nb.id
             session.notebook_id = nb.id
@@ -327,11 +342,11 @@ async def run_chat(args) -> int:
                 source = await backend.add_youtube_source(nb.id, url, timeout=args.wait_timeout)
                 print(f"Source ready: {source.title or source.id}")
             except VidchatAuthError as exc:
-                print(f"Authentication failed: {exc}")
+                print(error_text(f"Authentication failed: {exc}"))
                 await best_effort_delete(backend, nb.id)
                 return 2
             except VidchatIngestTimeout as exc:
-                print(f"Import timed out: {exc}")
+                print(error_text(f"Import timed out: {exc}"))
                 print("No summary was produced — refusing to present an incomplete result as success.")
                 if not args.no_cleanup_on_failure:
                     if await best_effort_delete(backend, nb.id):
@@ -340,7 +355,7 @@ async def run_chat(args) -> int:
                     print(f"Left temporary notebook {nb.id} in place (--no-cleanup-on-failure).")
                 return 1
             except VidchatIngestError as exc:
-                print(f"Import failed: {exc}")
+                print(error_text(f"Import failed: {exc}"))
                 print("No summary was produced — refusing to present an incomplete result as success.")
                 if not args.no_cleanup_on_failure:
                     if await best_effort_delete(backend, nb.id):
@@ -349,30 +364,30 @@ async def run_chat(args) -> int:
                     print(f"Left temporary notebook {nb.id} in place (--no-cleanup-on-failure).")
                 return 1
             except VidchatError as exc:
-                print(f"Import failed: {exc}")
+                print(error_text(f"Import failed: {exc}"))
                 if not args.no_cleanup_on_failure:
                     await best_effort_delete(backend, nb.id)
                 return 1
 
             # 3. Structured strategy summary.
-            print("\nGenerating strategy summary…")
+            print(hint_text("\nGenerating strategy summary…"))
             try:
                 answer = await backend.ask(nb.id, SUMMARY_PROMPT)
             except VidchatAuthError as exc:
-                print(f"Authentication failed: {exc}")
+                print(error_text(f"Authentication failed: {exc}"))
                 print(f"Source import succeeded; notebook {nb.id} left in place for retry.")
                 return 2
             except VidchatError as exc:
-                print(f"Summary generation failed: {exc}")
+                print(error_text(f"Summary generation failed: {exc}"))
                 print(f"Notebook {nb.id} left in place; delete with: vidchat delete-notebook {nb.id}")
                 return 1
             if not answer.text.strip():
-                print("Summary came back empty — refusing to present that as success. "
-                      f"Notebook {nb.id} left in place for inspection.")
+                print(error_text("Summary came back empty — refusing to present that as success. "
+                      f"Notebook {nb.id} left in place for inspection."))
                 return 1
             session.summary = answer.text
-            print("\n# Strategy summary\n")
-            print(session.summary)
+            print(banner("\n# Strategy summary\n"))
+            print(glow(session.summary))
 
             # 4. Follow-up chat.
             if args.on_exit != "prompt" and not sys.stdin.isatty():
@@ -394,10 +409,10 @@ async def run_chat(args) -> int:
             print("No notebook had been created yet; nothing to clean up.")
         return 130
     except VidchatAuthError as exc:  # outside the guarded block (e.g. client open)
-        print(f"Authentication failed: {exc}")
+        print(error_text(f"Authentication failed: {exc}"))
         return 2
     except VidchatError as exc:
-        print(f"Failed: {exc}")
+        print(error_text(f"Failed: {exc}"))
         return 1
 
 

@@ -202,3 +202,31 @@ def test_real_backend_ingest_error_status_raises():
             raise AssertionError("expected VidchatIngestError")
 
     asyncio.run(go())
+
+
+def test_style_plain_when_no_color(monkeypatch):
+    from vidchat import style
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert style.color_enabled() is False
+    assert style.paint("hello", style.BOLD) == "hello"
+    assert style.glow("hello") == "hello"
+    assert style.banner("hello") == "hello"
+    assert "\x1b" not in style.prompt_text()
+
+
+def test_style_plain_when_not_a_tty(monkeypatch, capsys):
+    from vidchat import style
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    # Under pytest, stdout is captured (not a TTY) → no escapes emitted.
+    assert style.color_enabled() is False
+    assert style.error_text("boom") == "boom"
+
+
+def test_setup_readline_never_raises(tmp_path):
+    from vidchat import style
+
+    # Must not raise with or without a usable readline; history lands here.
+    result = style.setup_readline(tmp_path / "history", ("ask", "quit"))
+    assert isinstance(result, bool)

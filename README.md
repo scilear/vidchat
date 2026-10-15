@@ -23,11 +23,21 @@ Commands:
   quit             Exit via the retention prompt (never silent)
   help             Show this help
 
-vidchat> What evidence supports the claimed edge?
+you › What evidence supports the claimed edge?
 …
-vidchat> keep
+you › keep
 Kept notebook nb-abc123 and saved the archive.
 ```
+
+## Terminal comfort
+
+- The chat prompt supports full line editing: **Left/Right arrows** move
+  through what you typed, **Up/Down** recall history, **Tab** completes
+  commands, `Ctrl-A`/`Ctrl-E` jump to line ends.
+- Command history persists in `~/.vidchat/research/history`.
+- The `you ›` prompt is highlighted, assistant answers print **bold**,
+  errors red, hints dim — only on interactive terminals. Piped output,
+  logs, and `NO_COLOR=1` always stay plain text.
 
 ## How it works
 
