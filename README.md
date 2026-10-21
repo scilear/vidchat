@@ -120,4 +120,4 @@ vidchat --demo "https://www.youtube.com/watch?v=dQw4w9WgXcQ" < /dev/null --on-ex
 
 ---
 
-Built and maintained by [Fabien Vernaz](https://solvefortime.com/), AI engineering expert, who helps small businesses apply AI with the checks and accountability it needs ([Solve for Time](https://solvefortime.com/)).
+Built and maintained by [Fabien Vernaz](https://solvefortime.com/), expert in AI and finance, who helps small businesses apply AI with the checks and accountability it needs ([Solve for Time](https://solvefortime.com/)).
