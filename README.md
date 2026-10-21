@@ -117,3 +117,7 @@ vidchat --demo "https://www.youtube.com/watch?v=dQw4w9WgXcQ" < /dev/null --on-ex
   `vidchat delete-notebook <id>` command; nothing is silently deleted.
 - Every run records a `pending` entry in `index.json` once the notebook
   exists, so abandoned notebooks stay visible via `vidchat list`.
+
+---
+
+Built and maintained by [Fabien Vernaz](https://solvefortime.com/), engineer and former CTO, who helps small businesses apply AI with the checks and accountability it needs ([Solve for Time](https://solvefortime.com/)).
